@@ -341,17 +341,17 @@ diff --git a/Config.kmk b/Config.kmk
 index e4bc4beb029..50fe819056e 100644
 --- a/Config.kmk
 +++ b/Config.kmk
-@@ -566,7 +566,7 @@ endif
- # Enables the new breakpoint handling code, see @bugref{8650}
+@@ -564,7 +564,7 @@ endif
  VBOX_WITH_DBGF_FLOW_TRACING = 1
- # Enables ARMv8 API support and if possible virtualization, see @bugref{10383}
--VBOX_WITH_VIRT_ARMV8 = 1
-+VBOX_WITH_VIRT_ARMV8 =
- # Makes x86 emulation on ARM hosts available in the GUI.
- if1of ($(KBUILD_TARGET).$(KBUILD_TARGET_ARCH), empty-set)
-  VBOX_WITH_X86_ON_ARM_ENABLED = 1
-@@ -1669,6 +1669,19 @@ ifdef VBOX_HEADLESS
-  VBOX_WITH_VBOXSDL =
+ # Enables ARMv8 virtualization, see @bugref{10383}
+ if1of ($(KBUILD_TARGET).$(KBUILD_TARGET_ARCH), darwin.arm64 win.arm64 linux.arm64)
+- VBOX_WITH_VIRT_ARMV8 = 1
++ VBOX_WITH_VIRT_ARMV8 =
+ endif
+ if1of ($(KBUILD_TARGET).$(KBUILD_TARGET_ARCH), linux.amd64)
+  ifdef VBOX_WITH_R0_MODULES
+@@ -1668,6 +1668,19 @@ ifdef VBOX_HEADLESS
+  VBOX_WITH_VRDP_RDESKTOP =
  endif
  
 +#
@@ -384,7 +384,7 @@ index e4bc4beb029..50fe819056e 100644
 +endif
  
  # Don't flood CDEFS, old MASMs doesn't like too many defines.
- ifdef VBOX_WITH_HARDENING
+ ifdef VBOX_WITH_DEBUGGER
 @@ -3601,6 +3622,8 @@ ifndef VBOX_GCC_std
    VBOX_GCC_std := -std=c++17
    # else if "$(VBOX_CLANG_VERSION_CXX)" vge 60000 # Most language features complete by v6. Lib stuff was less complete in v6, but hopefully acceptable for out purposes.
@@ -796,9 +796,9 @@ index 091a34d4d7c..a48016b1e0a 100644
  #define X86_CPUID_STEXT_FEATURE_ECX_CET_SS            RT_BIT_32(7)
 +/** ECX Bit 8 - GFNI - Supports Galois Field instructions . */
 +#define X86_CPUID_STEXT_FEATURE_ECX_GFNI              RT_BIT_32(8)
- /** ECX Bit 15 - LA57  - Supports 5-level paging. */
- #define X86_CPUID_STEXT_FEATURE_ECX_LA57              RT_BIT_32(16)
  /** ECX Bits 17-21 - MAWAU - Value used by BNDLDX and BNDSTX. */
+ #define X86_CPUID_STEXT_FEATURE_ECX_MAWAU             UINT32_C(0x003e0000)
+ /** ECX Bit 22 - RDPID - Support pread process ID. */
 @@ -712,6 +716,8 @@ typedef const X86CPUIDFEATEDX *PCX86CPUIDFEATEDX;
  /** ECX Bit 30 - SGX_LC - Supports SGX launch configuration. */
  #define X86_CPUID_STEXT_FEATURE_ECX_SGX_LC            RT_BIT_32(30)
@@ -1343,10 +1343,10 @@ index 9c436e11b64..d03fcfe7bef 100644
 --- a/src/VBox/HostDrivers/Support/Makefile.kmk
 +++ b/src/VBox/HostDrivers/Support/Makefile.kmk
 @@ -197,6 +197,7 @@ SUPR3_DEFS          = \
+ 	$(if $(VBOX_WITH_MAIN),VBOX_WITH_MAIN,) \
+ 	$(if $(VBOX_WITH_RAW_MODE),VBOX_WITH_RAW_MODE,) \
  	$(if $(VBOX_WITH_DRIVERLESS_NEM_FALLBACK),VBOX_WITH_DRIVERLESS_NEM_FALLBACK,) \
- 	$(if $(VBOX_WITH_R0_MODULES),VBOX_WITH_R0_MODULES,) \
- 	$(if $(VBOX_WITH_DRIVERLESS_FORCED),VBOX_WITH_DRIVERLESS_FORCED,) \
-+        $(if $(VBOX_WITH_PREALLOC_RAM_BY_DEFAULT),VBOX_WITH_PREALLOC_RAM_BY_DEFAULT,) \
++	$(if $(VBOX_WITH_PREALLOC_RAM_BY_DEFAULT),VBOX_WITH_PREALLOC_RAM_BY_DEFAULT,) \
  	VBOX_PERMIT_MORE \
  	VBOX_PERMIT_EVEN_MORE
  SUPR3_INCS         := $(PATH_SUB_CURRENT)
@@ -1366,7 +1366,7 @@ index 9ff87b051bf..7a781a28da6 100644
      /*
       * Check if madvise works.
       */
-@@ -256,10 +261,15 @@ DECLHIDDEN(int) suplibOsPageAlloc(PSUPLIBDATA pThis, size_t cPages, uint32_t fFl
+@@ -256,7 +261,12 @@ DECLHIDDEN(int) suplibOsPageAlloc(PSUPLIBDATA pThis, size_t cPages, uint32_t fFl
          fMmap |= MAP_HUGETLB;
  #endif
  
@@ -1374,14 +1374,11 @@ index 9ff87b051bf..7a781a28da6 100644
 +    fMmap |= MAP_POPULATE;
 +#endif
 +
-     uint32_t const cbPage = SUP_PAGE_SIZE;
-     uint32_t const cPageShift = SUP_PAGE_SHIFT;
- 
-     size_t cbMmap = cPages << cPageShift;
+     size_t cbMmap = cPages << PAGE_SHIFT;
 +
      if (   !pThis->fSysMadviseWorks
          && (fFlags & (SUP_PAGE_ALLOC_F_FOR_LOCKING | SUP_PAGE_ALLOC_F_LARGE_PAGES)) == SUP_PAGE_ALLOC_F_FOR_LOCKING)
-         cbMmap += cbPage * 2;
+         cbMmap += PAGE_SIZE * 2;
 diff --git a/src/VBox/Main/Makefile.kmk b/src/VBox/Main/Makefile.kmk
 index 7f543a3345c..f039336fd5a 100644
 --- a/src/VBox/Main/Makefile.kmk
@@ -1455,15 +1452,15 @@ diff --git a/src/VBox/VMM/Makefile.kmk b/src/VBox/VMM/Makefile.kmk
 index 51c6d9995da..06052bc6dbc 100644
 --- a/src/VBox/VMM/Makefile.kmk
 +++ b/src/VBox/VMM/Makefile.kmk
-@@ -147,7 +147,8 @@ VBoxVMM_SOURCES  = \
+@@ -140,7 +140,8 @@ VBoxVMM_SOURCES  = \
  	VMMR3/EMR3Nem.cpp \
- 	VMMR3/GCMR3.cpp \
- 	VMMR3/GIMR3.cpp \
--	VMMR3/GIMR3Hv.cpp \
-+	$(if-expr !defined(VBOX_WITH_KVM), VMMR3/GIMR3Hv.cpp,) \
+ 	VMMR3/GCM.cpp \
+ 	VMMR3/GIM.cpp \
+-	VMMR3/GIMHv.cpp \
++	$(if-expr !defined(VBOX_WITH_KVM), VMMR3/GIMHv.cpp,) \
 +	$(if-expr  defined(VBOX_WITH_KVM), VMMR3/GIMHvOnKvm.cpp,) \
- 	VMMR3/GIMR3Kvm.cpp \
- 	VMMR3/GIMR3Minimal.cpp \
+ 	VMMR3/GIMKvm.cpp \
+ 	VMMR3/GIMMinimal.cpp \
  	VMMR3/IEMR3.cpp \
 @@ -237,7 +238,8 @@ VBoxVMM_SOURCES  = \
  	VMMAll/EMAll.cpp \
@@ -1617,10 +1614,10 @@ index 00000000000..f45a2d7512a
 +
 +    AssertLogRelMsgReturn(false, ("%s", __PRETTY_FUNCTION__), VERR_NOT_SUPPORTED);
 +}
-diff --git a/src/VBox/VMM/VMMAll/PGMAllBth-x86.cpp.h b/src/VBox/VMM/VMMAll/PGMAllBth-x86.cpp.h
+diff --git a/src/VBox/VMM/VMMAll/PGMAllBth.h b/src/VBox/VMM/VMMAll/PGMAllBth.h
 index cbc49a97026..1709df57de4 100644
---- a/src/VBox/VMM/VMMAll/PGMAllBth-x86.cpp.h
-+++ b/src/VBox/VMM/VMMAll/PGMAllBth-x86.cpp.h
+--- a/src/VBox/VMM/VMMAll/PGMAllBth.h
++++ b/src/VBox/VMM/VMMAll/PGMAllBth.h
 @@ -4976,7 +4976,10 @@ PGM_BTH_DECL(int, MapCR3)(PVMCPUCC pVCpu, RTGCPHYS GCPhysCR3)
   || PGM_GST_TYPE == PGM_TYPE_AMD64
  
@@ -1637,9 +1634,9 @@ index 6db8c026d53..fc9d0d00bbd 100644
 --- a/src/VBox/VMM/VMMAll/TMAll.cpp
 +++ b/src/VBox/VMM/VMMAll/TMAll.cpp
 @@ -211,6 +211,10 @@ VMMDECL(void) TMNotifyEndOfExecution(PVMCC pVM, PVMCPUCC pVCpu, uint64_t uTsc)
- # ifndef VBOX_VMM_TARGET_ARMV8 /* This is perfectly valid on ARM if the guest is halting in the hypervisor. */
-     AssertStmt(cTicks <= uCpuHz << 2, cTicks = uCpuHz << 2); /* max 4 sec */
+     uint64_t const uCpuHz = SUPGetCpuHzFromGipBySetIndex(g_pSUPGlobalInfoPage, pVCpu->iHostCpuSet);
  # endif
+     AssertStmt(cTicks <= uCpuHz << 2, cTicks = uCpuHz << 2); /* max 4 sec */
 +    /* Execute for at most 4s. */
 +    AssertMsgStmt(cTicks <= uCpuHz << 2,
 +                  ("TM/%u: execution took longer than 4s: cTicks=%llu uCpuHz=%llu\n", pVCpu->idCpu, cTicks, uCpuHz),
@@ -1663,11 +1660,11 @@ index 48416b5123e..0d3d0297060 100644
      return cNsToDeadline;
  }
  
-diff --git a/src/VBox/VMM/VMMAll/target-x86/APICAll-x86.cpp b/src/VBox/VMM/VMMAll/target-x86/APICAll-x86.cpp
+diff --git a/src/VBox/VMM/VMMAll/APICAll.cpp b/src/VBox/VMM/VMMAll/APICAll.cpp
 index 8fc220e8696..3d06f1b78da 100644
---- a/src/VBox/VMM/VMMAll/target-x86/APICAll-x86.cpp
-+++ b/src/VBox/VMM/VMMAll/target-x86/APICAll-x86.cpp
-@@ -2227,6 +2227,16 @@ static DECLCALLBACK(VBOXSTRICTRC) apicSetLocalInterrupt(PVMCPUCC pVCpu, uint8_t
+--- a/src/VBox/VMM/VMMAll/APICAll.cpp
++++ b/src/VBox/VMM/VMMAll/APICAll.cpp
+@@ -2726,6 +2726,16 @@ static DECLCALLBACK(VBOXSTRICTRC) apicSetLocalInterrupt(PVMCPUCC pVCpu, uint8_t
      AssertReturn(u8Level <= 1, VERR_INVALID_PARAMETER);
  
      VBOXSTRICTRC rcStrict = VINF_SUCCESS;
@@ -1683,12 +1680,12 @@ index 8fc220e8696..3d06f1b78da 100644
 +#endif
  
      /* If the APIC is enabled, the interrupt is subject to LVT programming. */
-     if (apicIsEnabled(pVCpu))
-diff --git a/src/VBox/VMM/VMMR3/EMR3.cpp b/src/VBox/VMM/VMMR3/EMR3.cpp
+     if (APICIsEnabled(pVCpu))
+diff --git a/src/VBox/VMM/VMMR3EM.cpp b/src/VBox/VMM/VMMR3/EM.cpp
 index 53554bdbf49..69885cd861b 100644
---- a/src/VBox/VMM/VMMR3/EMR3.cpp
-+++ b/src/VBox/VMM/VMMR3/EMR3.cpp
-@@ -259,7 +259,11 @@ VMMR3_INT_DECL(int) EMR3Init(PVM pVM)
+--- a/src/VBox/VMM/VMMR3/EM.cpp
++++ b/src/VBox/VMM/VMMR3/EM.cpp
+@@ -223,7 +223,11 @@ VMMR3_INT_DECL(int) EMR3Init(PVM pVM)
      {
          PVMCPU pVCpu = pVM->apCpusR3[idCpu];
  
@@ -1713,8 +1710,8 @@ index 53554bdbf49..69885cd861b 100644
                          pVCpu->em.s.enmState = EMSTATE_WAIT_SIPI;
 +#endif
                      }
-                     fNeedToFlushIemTlbs = true;
                      break;
+                 }
 diff --git a/src/VBox/VMM/VMMR3/GIMHvOnKvm.cpp b/src/VBox/VMM/VMMR3/GIMHvOnKvm.cpp
 new file mode 100644
 index 00000000000..362cc690f14
@@ -2361,10 +2358,10 @@ index 00000000000..362cc690f14
 +    NOREF(pVM); NOREF(pDbgSetup);
 +    return VERR_GIM_NO_DEBUG_CONNECTION;
 +}
-diff --git a/src/VBox/VMM/VMMR3/GIMR3Hv.cpp b/src/VBox/VMM/VMMR3/GIMR3Hv.cpp
+diff --git a/src/VBox/VMM/VMMR3/GIMHv.cpp b/src/VBox/VMM/VMMR3/GIMHv.cpp
 index 634513ca5c5..2588f8e07f2 100644
---- a/src/VBox/VMM/VMMR3/GIMR3Hv.cpp
-+++ b/src/VBox/VMM/VMMR3/GIMR3Hv.cpp
+--- a/src/VBox/VMM/VMMR3/GIMHv.cpp
++++ b/src/VBox/VMM/VMMR3/GIMHv.cpp
 @@ -34,6 +34,9 @@
  #include <VBox/vmm/gim.h>
  #include <VBox/vmm/cpum.h>
@@ -2490,7 +2487,7 @@ diff --git a/src/VBox/VMM/VMMR3/NEMR3NativeTemplate-linux.cpp.h b/src/VBox/VMM/V
 index 0a470f160e9..27cb5c9ad13 100644
 --- a/src/VBox/VMM/VMMR3/NEMR3NativeTemplate-linux.cpp.h
 +++ b/src/VBox/VMM/VMMR3/NEMR3NativeTemplate-linux.cpp.h
-@@ -431,6 +431,7 @@ static int nemR3LnxInitCheckCapabilities(PVM pVM, PRTERRINFO pErrInfo)
+@@ -420,6 +420,7 @@ static int nemR3LnxInitCheckCapabilities(PVM pVM, PRTERRINFO pErrInfo)
  
  
  /** @callback_method_impl{FNVMMEMTRENDEZVOUS}   */
@@ -2498,10 +2495,10 @@ index 0a470f160e9..27cb5c9ad13 100644
  static DECLCALLBACK(VBOXSTRICTRC) nemR3LnxFixThreadPoke(PVM pVM, PVMCPU pVCpu, void *pvUser)
  {
      RT_NOREF(pVM, pvUser);
-@@ -438,11 +439,107 @@ static DECLCALLBACK(VBOXSTRICTRC) nemR3LnxFixThreadPoke(PVM pVM, PVMCPU pVCpu, v
-     AssertLogRelRC(rc);
+@@ -428,6 +429,97 @@
      return VINF_SUCCESS;
  }
+ 
 +#else
 +static VBOXSTRICTRC nemR3LnxSetVCpuSignalMask(PVMCPU pVCpu, sigset_t *pSigset)
 +{
@@ -2561,8 +2558,8 @@ index 0a470f160e9..27cb5c9ad13 100644
 +    return VINF_SUCCESS;
 +}
 +#endif
- 
- 
++
++
 +#ifdef VBOX_WITH_KVM
 +/**
 + * Check common environment problems and inform the user about misconfigurations.
@@ -2593,8 +2590,11 @@ index 0a470f160e9..27cb5c9ad13 100644
 +    return VINF_SUCCESS;
 +}
 +#endif
-+
- DECLHIDDEN(int) nemR3NativeInit(PVM pVM, bool fFallback, bool fForced)
+ 
+ /**
+  * Try initialize the native API.
+@@ -445,6 +537,12 @@
+ int nemR3NativeInit(PVM pVM, bool fFallback, bool fForced)
  {
      RT_NOREF(pVM, fFallback, fForced);
 +
@@ -2606,7 +2606,7 @@ index 0a470f160e9..27cb5c9ad13 100644
      /*
       * Some state init.
       */
-@@ -623,13 +720,32 @@ DECLHIDDEN(int) nemR3NativeTerm(PVM pVM)
+@@ -631,6 +729,10 @@ int nemR3NativeTerm(PVM pVM)
          close(pVM->nem.s.fdKvm);
          pVM->nem.s.fdKvm = -1;
      }
@@ -2617,8 +2617,9 @@ index 0a470f160e9..27cb5c9ad13 100644
      return VINF_SUCCESS;
  }
  
- 
- DECLHIDDEN(void) nemR3NativeReset(PVM pVM)
+@@ -642,7 +744,22 @@
+  */
+ void nemR3NativeReset(PVM pVM)
  {
 +#ifndef VBOX_WITH_KVM
      RT_NOREF(pVM);
@@ -2639,13 +2640,13 @@ index 0a470f160e9..27cb5c9ad13 100644
  }
  
  
-diff --git a/src/VBox/VMM/VMMR3/PDMR3DevMiscHlp.cpp b/src/VBox/VMM/VMMR3/PDMR3DevMiscHlp.cpp
+diff --git a/src/VBox/VMM/VMMR3/PDMDevMiscHlp.cpp b/src/VBox/VMM/VMMR3/PDMDevMiscHlp.cpp
 index 36f9e4a11e4..06b09e8ce5e 100644
---- a/src/VBox/VMM/VMMR3/PDMR3DevMiscHlp.cpp
-+++ b/src/VBox/VMM/VMMR3/PDMR3DevMiscHlp.cpp
+--- a/src/VBox/VMM/VMMR3/PDMDevMiscHlp.cpp
++++ b/src/VBox/VMM/VMMR3/PDMDevMiscHlp.cpp
 @@ -37,6 +37,7 @@
- #ifdef VBOX_VMM_TARGET_X86
- # include <VBox/vmm/pdmapic.h>
+ #ifndef VBOX_VMM_TARGET_ARMV8
+ # include <VBox/vmm/apic.h>
  #endif
 +#include <VBox/vmm/nem.h>
  #include <VBox/vmm/vm.h>
@@ -2781,31 +2782,27 @@ index 36f9e4a11e4..06b09e8ce5e 100644
      PDM_IOAPICHLP_VERSION /* the end */
  };
  
-diff --git a/src/VBox/VMM/VMMR3/PGMR3Phys.cpp b/src/VBox/VMM/VMMR3/PGMR3Phys.cpp
+diff --git a/src/VBox/VMM/VMMR3/PGMPhys.cpp b/src/VBox/VMM/VMMR3/PGMPhys.cpp
 index 5cfd761a490..9fbad9a04bb 100644
---- a/src/VBox/VMM/VMMR3/PGMR3Phys.cpp
-+++ b/src/VBox/VMM/VMMR3/PGMR3Phys.cpp
-@@ -2124,11 +2124,16 @@ int pgmR3PhysRamPreAllocate(PVM pVM)
+--- a/src/VBox/VMM/VMMR3/PGMPhys.cpp
++++ b/src/VBox/VMM/VMMR3/PGMPhys.cpp
+@@ -2107,7 +2107,12 @@ int pgmR3PhysRamPreAllocate(PVM pVM)
      Assert(pVM->pgm.s.fRamPreAlloc);
      Log(("pgmR3PhysRamPreAllocate: enter\n"));
- # ifdef VBOX_WITH_PGM_NEM_MODE
-+#ifdef VBOX_WITH_PREALLOC_RAM_BY_DEFAULT
+ #ifdef VBOX_WITH_PGM_NEM_MODE
++# ifdef VBOX_WITH_PREALLOC_RAM_BY_DEFAULT
 +    Log(("pgmR3PhysRamPreAllocate: Handled by default in NEM mode, skip\n"));
 +    return VINF_SUCCESS;
-+#else
-     if (VM_IS_NEM_ENABLED(pVM))
-     {
-         LogRel(("PGM: Pre-alloc ignored in NEM mode.\n"));
-         return VINF_SUCCESS;
-     }
-+#endif
- # endif
++# else
+     AssertLogRelReturn(!pVM->pgm.s.fNemMode, VERR_PGM_NOT_SUPPORTED_FOR_NEM_MODE);
++# endif
+ #endif
  
      /*
-diff --git a/src/VBox/VMM/VMMR3/VMMR3.cpp b/src/VBox/VMM/VMMR3/VMMR3.cpp
+diff --git a/src/VBox/VMM/VMMR3/VMM.cpp b/src/VBox/VMM/VMMR3/VMM.cpp
 index 98be5b5e222..2d0cc7bec52 100644
---- a/src/VBox/VMM/VMMR3/VMMR3.cpp
-+++ b/src/VBox/VMM/VMMR3/VMMR3.cpp
+--- a/src/VBox/VMM/VMMR3/VMM.cpp
++++ b/src/VBox/VMM/VMMR3/VMM.cpp
 @@ -1104,6 +1104,11 @@ static DECLCALLBACK(int) vmmR3Load(PVM pVM, PSSMHANDLE pSSM, uint32_t uVersion,
          AssertMsgFailed(("u32=%#x\n", u32));
          return VERR_SSM_DATA_UNIT_FORMAT_CHANGED;
@@ -2818,18 +2815,18 @@ index 98be5b5e222..2d0cc7bec52 100644
      return VINF_SUCCESS;
  }
  
-diff --git a/src/VBox/VMM/VMMR3/target-x86/APICR3-x86.cpp b/src/VBox/VMM/VMMR3/target-x86/APICR3-x86.cpp
+diff --git a/src/VBox/VMM/VMMR3/APIC.cpp b/src/VBox/VMM/VMMR3/APIC.cpp
 index 2fd99726bad..9e99863bf16 100644
---- a/src/VBox/VMM/VMMR3/target-x86/APICR3-x86.cpp
-+++ b/src/VBox/VMM/VMMR3/target-x86/APICR3-x86.cpp
-@@ -35,6 +35,7 @@
+--- a/src/VBox/VMM/VMMR3/APIC.cpp
++++ b/src/VBox/VMM/VMMR3/APIC.cpp
+@@ -36,6 +36,7 @@
  #include <VBox/vmm/cpum.h>
  #include <VBox/vmm/hm.h>
  #include <VBox/vmm/mm.h>
 +#include <VBox/vmm/nem.h>
  #include <VBox/vmm/pdmdev.h>
  #include <VBox/vmm/ssm.h>
- #ifndef VBOX_DEVICE_STRUCT_TESTCASE
+ #include <VBox/vmm/vm.h>
 @@ -251,6 +252,10 @@ static DECLCALLBACK(void) apicR3Info(PVM pVM, PCDBGFINFOHLP pHlp, const char *ps
      if (!pVCpu)
          pVCpu = pVM->apCpusR3[0];
@@ -2838,9 +2835,9 @@ index 2fd99726bad..9e99863bf16 100644
 +    NEMR3KvmGetLapicState(pVCpu, VMCPU_TO_XAPICPAGE(pVCpu));
 +#endif
 +
-     PCAPICCPU pApicCpu = VMCPU_TO_APICCPU(pVCpu);
-     apicR3CommonDbgInfo(pVCpu, pHlp, pApicCpu->uApicBaseMsr);
-     pHlp->pfnPrintf(pHlp, "  ESR Internal                  = %#x\n", pApicCpu->uEsrInternal);
+     PCAPICCPU    pApicCpu    = VMCPU_TO_APICCPU(pVCpu);
+     PCXAPICPAGE  pXApicPage  = VMCPU_TO_CXAPICPAGE(pVCpu);
+     PCX2APICPAGE pX2ApicPage = VMCPU_TO_CX2APICPAGE(pVCpu);
 @@ -602,6 +607,10 @@ static DECLCALLBACK(int) apicR3SaveExec(PPDMDEVINS pDevIns, PSSMHANDLE pSSM)
          PVMCPU pVCpu = pVM->apCpusR3[idCpu];
          PCAPICCPU pApicCpu = VMCPU_TO_APICCPU(pVCpu);
@@ -2850,7 +2847,7 @@ index 2fd99726bad..9e99863bf16 100644
 +#endif
 +
          /* Update interrupts from the pending-interrupts bitmaps to the IRR. */
-         PDMApicUpdatePendingInterrupts(pVCpu);
+         APICUpdatePendingInterrupts(pVCpu);
  
 @@ -695,6 +704,10 @@ static DECLCALLBACK(int) apicR3LoadExec(PPDMDEVINS pDevIns, PSSMHANDLE pSSM, uin
              else
@@ -2885,10 +2882,10 @@ index 2fd99726bad..9e99863bf16 100644
  
          APIC_REG_COUNTER(&pApicCpu->StatPostIntrCnt,   "%u",  "APIC/VCPU stats / number of apicPostInterrupt calls.");
          for (size_t i = 0; i < RT_ELEMENTS(pApicCpu->aStatVectors); i++)
-diff --git a/src/VBox/VMM/VMMR3/target-x86/CPUMR3-x86.cpp b/src/VBox/VMM/VMMR3/target-x86/CPUMR3-x86.cpp
+diff --git a/src/VBox/VMM/VMMR3/CPUM.cpp b/src/VBox/VMM/VMMR3/CPUM.cpp
 index 74375ceb042..7d4bf4b7a3c 100644
---- a/src/VBox/VMM/VMMR3/target-x86/CPUMR3-x86.cpp
-+++ b/src/VBox/VMM/VMMR3/target-x86/CPUMR3-x86.cpp
+--- a/src/VBox/VMM/VMMR3/CPUM.cpp
++++ b/src/VBox/VMM/VMMR3/CPUM.cpp
 @@ -1569,6 +1569,7 @@ DECLHIDDEN(void) cpumR3InitVmxGuestFeaturesAndMsrs(PVM pVM, PCFGMNODE pCpumCfg,
      if (fVmxEpt)
      {
@@ -2896,10 +2893,10 @@ index 74375ceb042..7d4bf4b7a3c 100644
 +#ifndef VBOX_WITH_KVM_NESTING
          if (!VM_IS_HM_ENABLED(pVM) && !VM_IS_EXEC_ENGINE_IEM(pVM))
              pszWhy = "execution engine is neither HM nor IEM";
- #ifdef RT_ARCH_AMD64
+         else if (VM_IS_HM_ENABLED(pVM) && !HMIsNestedPagingActive(pVM))
 @@ -1576,6 +1577,9 @@ DECLHIDDEN(void) cpumR3InitVmxGuestFeaturesAndMsrs(PVM pVM, PCFGMNODE pCpumCfg,
              pszWhy = "nested paging is not enabled for the VM or it is not supported by the host";
-         else if (VM_IS_HM_ENABLED(pVM) && !pVM->cpum.s.HostFeatures.s.fNoExecute)
+         else if (VM_IS_HM_ENABLED(pVM) && !pVM->cpum.s.HostFeatures.fNoExecute)
              pszWhy = "NX is not available on the host";
 +#endif
 +#else
@@ -2928,12 +2925,12 @@ index 74375ceb042..7d4bf4b7a3c 100644
                  }
                  if (pGstCtx->fXStateMask & XSAVE_C_YMM)
                  {
-diff --git a/src/VBox/VMM/VMMR3/target-x86/CPUMR3CpuId-x86.cpp b/src/VBox/VMM/VMMR3/target-x86/CPUMR3CpuId-x86.cpp
+diff --git a/src/VBox/VMM/VMMR3/CPUMR3CpuId.cpp b/src/VBox/VMM/VMMR3/CPUMR3CpuId.cpp
 index 3e791b24d2c..37780219622 100644
---- a/src/VBox/VMM/VMMR3/target-x86/CPUMR3CpuId-x86.cpp
-+++ b/src/VBox/VMM/VMMR3/target-x86/CPUMR3CpuId-x86.cpp
+--- a/src/VBox/VMM/VMMR3/CPUMR3CpuId.cpp
++++ b/src/VBox/VMM/VMMR3/CPUMR3CpuId.cpp
 @@ -1326,6 +1326,13 @@ static int cpumR3CpuIdSanitize(PVM pVM, PCPUM pCpum, PCPUMCPUIDCONFIG pConfig)
-     PASSTHRU_FEATURE_EX(enmConfig, fHostFeature, !VM_IS_EXEC_ENGINE_IEM(pVM), fConst)
+     ((enmConfig) && ((enmConfig) == CPUMISAEXTCFG_ENABLED_ALWAYS || (fHostFeature)) && (fAndExpr) ? (fConst) : 0)
  #define PASSTHRU_FEATURE_TODO(enmConfig, fConst) ((enmConfig) ? (fConst) : 0)
  
 +#ifdef VBOX_WITH_KVM
@@ -2964,7 +2961,7 @@ index 3e791b24d2c..37780219622 100644
                                 | X86_CPUID_STEXT_FEATURE_EBX_BMI2
 -                               //| X86_CPUID_STEXT_FEATURE_EBX_ERMS              RT_BIT(9)
 +                               | PASSTHRU_FEATURE_KVM_ONLY(X86_CPUID_STEXT_FEATURE_EBX_ERMS)
-                                | PASSTHRU_FEATURE_NOT_IEM(pConfig->enmInvpcid, pHstFeat->fInvpcid, X86_CPUID_STEXT_FEATURE_EBX_INVPCID)
+                                | PASSTHRU_FEATURE(pConfig->enmInvpcid, pHstFeat->fInvpcid, X86_CPUID_STEXT_FEATURE_EBX_INVPCID)
                                 //| X86_CPUID_STEXT_FEATURE_EBX_RTM               RT_BIT(11)
                                 //| X86_CPUID_STEXT_FEATURE_EBX_PQM               RT_BIT(12)
 @@ -1861,10 +1868,11 @@ static int cpumR3CpuIdSanitize(PVM pVM, PCPUM pCpum, PCPUMCPUIDCONFIG pConfig)
@@ -3020,7 +3017,7 @@ index 3e791b24d2c..37780219622 100644
 +#endif
          }
      }
- #endif /** @todo */
+ 
 @@ -3890,6 +3903,7 @@ VMMR3_INT_DECL(void) CPUMR3SetGuestCpuIdFeature(PVM pVM, CPUMCPUIDFEATURE enmFea
           * Note! ASSUMES CPUMCPUIDFEATURE_APIC is called first.
           */
@@ -3037,12 +3034,12 @@ index 3e791b24d2c..37780219622 100644
              break;
  
          /*
-diff --git a/src/VBox/VMM/VMMR3/target-x86/NEMR3Native-linux-x86.cpp b/src/VBox/VMM/VMMR3/target-x86/NEMR3Native-linux-x86.cpp
+diff --git a/src/VBox/VMM/VMMR3/NEMR3Native-linux.cpp b/src/VBox/VMM/VMMR3/NEMR3Native-linux.cpp
 index 80f89069bec..a98c83ad021 100644
---- a/src/VBox/VMM/VMMR3/target-x86/NEMR3Native-linux-x86.cpp
-+++ b/src/VBox/VMM/VMMR3/target-x86/NEMR3Native-linux-x86.cpp
+--- a/src/VBox/VMM/VMMR3/NEMR3Native-linux.cpp
++++ b/src/VBox/VMM/VMMR3/NEMR3Native-linux.cpp
 @@ -37,30 +37,124 @@
- #include <VBox/vmm/pdmapic.h>
+ #include <VBox/vmm/apic.h>
  #include <VBox/vmm/pdm.h>
  #include <VBox/vmm/trpm.h>
 +#include "CPUMInternal.h"
@@ -3080,7 +3077,7 @@ index 80f89069bec..a98c83ad021 100644
 +static constexpr uint64_t XAPIC_TPR_ADDR {0xfee00080};
  
  /* Instantiate the common bits we share with the ARMv8 KVM backend. */
- #include "../NEMR3NativeTemplate-linux.cpp.h"
+ #include "NEMR3NativeTemplate-linux.cpp.h"
  
 +/**
 + * The class priority shift for the TPR register.
@@ -3460,29 +3457,30 @@ index 80f89069bec..a98c83ad021 100644
 +    return KvmGetCpuIdLeavesGeneric(pVM, KvmCpuIdIoctl::CPUID, outpCpuId, outcLeaves);
 +}
  
- DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
+ int nemR3NativeInitCompleted(PVM pVM, VMINITCOMPLETED enmWhat)
  {
-@@ -163,10 +513,28 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
-      */
-     for (VMCPUID idCpu = 0; idCpu < pVM->cCpus; idCpu++)
+@@ -163,11 +513,29 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
      {
-+        PCPUMCTXMSRS const  pCtxMsrs    = CPUMQueryGuestCtxMsrsPtr(pVM->apCpusR3[idCpu]);
+         for (VMCPUID idCpu = 0; idCpu < pVM->cCpus; idCpu++)
+         {
++            PCPUMCTXMSRS const  pCtxMsrs    = CPUMQueryGuestCtxMsrsPtr(pVM->apCpusR3[idCpu]);
 +
-         int rc = nemR3LnxUpdateCpuIdsLeaves(pVM, pVM->apCpusR3[idCpu]);
-         AssertRCReturn(rc, rc);
+             int rc = nemR3LnxUpdateCpuIdsLeaves(pVM, pVM->apCpusR3[idCpu]);
+             AssertRCReturn(rc, rc);
 +
 +#ifdef VBOX_WITH_KVM_NESTING
-+        if (pVM->cpum.s.GuestFeatures.fVmx) {
-+            NEMR3KvmSetMsr(pVM->apCpusR3[idCpu], MSR_IA32_FEATURE_CONTROL, MSR_IA32_FEATURE_CONTROL_VMXON | MSR_IA32_FEATURE_CONTROL_LOCK);
-+        }
++            if (pVM->cpum.s.GuestFeatures.fVmx) {
++                NEMR3KvmSetMsr(pVM->apCpusR3[idCpu], MSR_IA32_FEATURE_CONTROL, MSR_IA32_FEATURE_CONTROL_VMXON | MSR_IA32_FEATURE_CONTROL_LOCK);
++            }
 +#endif
 +
-+        uint64_t val {0};
-+        NEMR3KvmGetMsr(pVM->apCpusR3[idCpu], MSR_IA32_ARCH_CAPABILITIES, &val);
-+        pCtxMsrs->msr.ArchCaps = val;
++            uint64_t val {0};
++            NEMR3KvmGetMsr(pVM->apCpusR3[idCpu], MSR_IA32_ARCH_CAPABILITIES, &val);
++            pCtxMsrs->msr.ArchCaps = val;
 +
-+        NEMR3KvmGetMsr(pVM->apCpusR3[idCpu], MSR_IA32_SPEC_CTRL, &val);
-+        pCtxMsrs->msr.SpecCtrl = val;
++            NEMR3KvmGetMsr(pVM->apCpusR3[idCpu], MSR_IA32_SPEC_CTRL, &val);
++            pCtxMsrs->msr.SpecCtrl = val;
+         }
      }
  
 +    int rcLnxGI = nemR3LnxInitGuestInterface(pVM);
@@ -3492,122 +3490,122 @@ index 80f89069bec..a98c83ad021 100644
       * Configure MSRs after ring-3 init is done.
       *
 @@ -193,6 +561,8 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
-         MsrFilters.ranges[iRange].bitmap = (uint8_t *)&RT_CONCAT(bm, a_uBase)[0]
+             MsrFilters.ranges[iRange].bitmap = (uint8_t *)&RT_CONCAT(bm, a_uBase)[0]
  #define MSR_RANGE_ADD(a_Msr) \
-     do { Assert((uint32_t)(a_Msr) - uBase < cMsrs); ASMBitSet(pbm, (uint32_t)(a_Msr) - uBase); } while (0)
+         do { Assert((uint32_t)(a_Msr) - uBase < cMsrs); ASMBitSet(pbm, (uint32_t)(a_Msr) - uBase); } while (0)
 +#define MSR_RANGE_ADD_CLOSED_IVL(first_Msr, last_Msr) \
-+    for (uint32_t uMsr = (first_Msr); uMsr <= last_Msr; uMsr++) { MSR_RANGE_ADD(uMsr); }
++        for (uint32_t uMsr = (first_Msr); uMsr <= last_Msr; uMsr++) { MSR_RANGE_ADD(uMsr); }
  #define MSR_RANGE_END(a_cMinMsrs) \
-         /* optimize the range size before closing: */ \
-         uint32_t cBitmap = cMsrs / 64; \
+             /* optimize the range size before closing: */ \
+             uint32_t cBitmap = cMsrs / 64; \
 @@ -204,11 +574,44 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
  
-     /* 1st Intel range: 0000_0000 to 0000_3000. */
-     MSR_RANGE_BEGIN(0x00000000, 0x00003000, KVM_MSR_FILTER_READ | KVM_MSR_FILTER_WRITE);
-+    MSR_RANGE_ADD(MSR_IA32_BIOS_SIGN_ID);
-     MSR_RANGE_ADD(MSR_IA32_TSC);
-+    MSR_RANGE_ADD(MSR_IA32_APICBASE);
-     MSR_RANGE_ADD(MSR_IA32_SYSENTER_CS);
-     MSR_RANGE_ADD(MSR_IA32_SYSENTER_ESP);
-     MSR_RANGE_ADD(MSR_IA32_SYSENTER_EIP);
-     MSR_RANGE_ADD(MSR_IA32_CR_PAT);
-+    MSR_RANGE_ADD(MSR_IA32_ARCH_CAPABILITIES);
-+    MSR_RANGE_ADD(MSR_IA32_SPEC_CTRL);
-+    MSR_RANGE_ADD(MSR_IA32_PRED_CMD);
-+    MSR_RANGE_ADD(MSR_IA32_FLUSH_CMD);
+         /* 1st Intel range: 0000_0000 to 0000_3000. */
+         MSR_RANGE_BEGIN(0x00000000, 0x00003000, KVM_MSR_FILTER_READ | KVM_MSR_FILTER_WRITE);
++        MSR_RANGE_ADD(MSR_IA32_BIOS_SIGN_ID);
+         MSR_RANGE_ADD(MSR_IA32_TSC);
++        MSR_RANGE_ADD(MSR_IA32_APICBASE);
+         MSR_RANGE_ADD(MSR_IA32_SYSENTER_CS);
+         MSR_RANGE_ADD(MSR_IA32_SYSENTER_ESP);
+         MSR_RANGE_ADD(MSR_IA32_SYSENTER_EIP);
+         MSR_RANGE_ADD(MSR_IA32_CR_PAT);
++        MSR_RANGE_ADD(MSR_IA32_ARCH_CAPABILITIES);
++        MSR_RANGE_ADD(MSR_IA32_SPEC_CTRL);
++        MSR_RANGE_ADD(MSR_IA32_PRED_CMD);
++        MSR_RANGE_ADD(MSR_IA32_FLUSH_CMD);
 +#ifdef VBOX_WITH_KVM_NESTING
-+    if (pVM->cpum.s.GuestFeatures.fVmx) {
-+        /* VMX MSRS */
-+        MSR_RANGE_ADD(MSR_IA32_FEATURE_CONTROL);
-+        MSR_RANGE_ADD(MSR_IA32_MISC_ENABLE);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_BASIC);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_PINBASED_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_PROCBASED_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_EXIT_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_ENTRY_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_MISC);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_CR0_FIXED0);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_CR0_FIXED1);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_CR4_FIXED0);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_CR4_FIXED1);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_VMCS_ENUM);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_PROCBASED_CTLS2);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_EPT_VPID_CAP);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_PINBASED_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_PROCBASED_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_EXIT_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_ENTRY_CTLS);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_VMFUNC);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_PROCBASED_CTLS3);
-+        MSR_RANGE_ADD(MSR_IA32_VMX_EXIT_CTLS2);
-+    }
++        if (pVM->cpum.s.GuestFeatures.fVmx) {
++            /* VMX MSRS */
++            MSR_RANGE_ADD(MSR_IA32_FEATURE_CONTROL);
++            MSR_RANGE_ADD(MSR_IA32_MISC_ENABLE);
++            MSR_RANGE_ADD(MSR_IA32_VMX_BASIC);
++            MSR_RANGE_ADD(MSR_IA32_VMX_PINBASED_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_PROCBASED_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_EXIT_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_ENTRY_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_MISC);
++            MSR_RANGE_ADD(MSR_IA32_VMX_CR0_FIXED0);
++            MSR_RANGE_ADD(MSR_IA32_VMX_CR0_FIXED1);
++            MSR_RANGE_ADD(MSR_IA32_VMX_CR4_FIXED0);
++            MSR_RANGE_ADD(MSR_IA32_VMX_CR4_FIXED1);
++            MSR_RANGE_ADD(MSR_IA32_VMX_VMCS_ENUM);
++            MSR_RANGE_ADD(MSR_IA32_VMX_PROCBASED_CTLS2);
++            MSR_RANGE_ADD(MSR_IA32_VMX_EPT_VPID_CAP);
++            MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_PINBASED_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_PROCBASED_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_EXIT_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_TRUE_ENTRY_CTLS);
++            MSR_RANGE_ADD(MSR_IA32_VMX_VMFUNC);
++            MSR_RANGE_ADD(MSR_IA32_VMX_PROCBASED_CTLS3);
++            MSR_RANGE_ADD(MSR_IA32_VMX_EXIT_CTLS2);
++        }
 +#endif
-     /** @todo more? */
-     MSR_RANGE_END(64);
+         /** @todo more? */
+         MSR_RANGE_END(64);
  
 @@ -216,6 +619,13 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
-     MSR_RANGE_BEGIN(0xc0000000, 0xc0003000, KVM_MSR_FILTER_READ | KVM_MSR_FILTER_WRITE);
-     MSR_RANGE_ADD(MSR_K6_EFER);
-     MSR_RANGE_ADD(MSR_K6_STAR);
+         MSR_RANGE_BEGIN(0xc0000000, 0xc0003000, KVM_MSR_FILTER_READ | KVM_MSR_FILTER_WRITE);
+         MSR_RANGE_ADD(MSR_K6_EFER);
+         MSR_RANGE_ADD(MSR_K6_STAR);
 +
-+    /*
-+     * If we don't allow direct access to FS_BASE, we clobber the FS base for the guest. This sounds like a bug in
-+     * our state synchronization with KVM.
-+     */
-+    MSR_RANGE_ADD(MSR_K8_FS_BASE);
++        /*
++         * If we don't allow direct access to FS_BASE, we clobber the FS base for the guest. This sounds like a bug in
++         * our state synchronization with KVM.
++         */
++        MSR_RANGE_ADD(MSR_K8_FS_BASE);
 +
-     MSR_RANGE_ADD(MSR_K8_GS_BASE);
-     MSR_RANGE_ADD(MSR_K8_KERNEL_GS_BASE);
-     MSR_RANGE_ADD(MSR_K8_LSTAR);
+         MSR_RANGE_ADD(MSR_K8_GS_BASE);
+         MSR_RANGE_ADD(MSR_K8_KERNEL_GS_BASE);
+         MSR_RANGE_ADD(MSR_K8_LSTAR);
 @@ -225,6 +635,49 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
-     /** @todo add more? */
-     MSR_RANGE_END(64);
+         /** @todo add more? */
+         MSR_RANGE_END(64);
  
-+    if (pVM->gim.s.enmProviderId == GIMPROVIDERID_HYPERV)
-+    {
-+        MSR_RANGE_BEGIN(0x40000000, 0x40003000, KVM_MSR_FILTER_READ | KVM_MSR_FILTER_WRITE);
++        if (pVM->gim.s.enmProviderId == GIMPROVIDERID_HYPERV)
++        {
++            MSR_RANGE_BEGIN(0x40000000, 0x40003000, KVM_MSR_FILTER_READ | KVM_MSR_FILTER_WRITE);
 +
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE0_FIRST, MSR_GIM_HV_RANGE0_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE1_FIRST, MSR_GIM_HV_RANGE1_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE2_FIRST, MSR_GIM_HV_RANGE2_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE3_FIRST, MSR_GIM_HV_RANGE3_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE0_FIRST, MSR_GIM_HV_RANGE0_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE1_FIRST, MSR_GIM_HV_RANGE1_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE2_FIRST, MSR_GIM_HV_RANGE2_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE3_FIRST, MSR_GIM_HV_RANGE3_LAST);
 +
-+        /* SynIC / STimer */
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE4_FIRST, MSR_GIM_HV_RANGE4_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE5_FIRST, MSR_GIM_HV_RANGE5_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE6_FIRST, MSR_GIM_HV_RANGE6_LAST);
++            /* SynIC / STimer */
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE4_FIRST, MSR_GIM_HV_RANGE4_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE5_FIRST, MSR_GIM_HV_RANGE5_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE6_FIRST, MSR_GIM_HV_RANGE6_LAST);
 +
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE7_FIRST, MSR_GIM_HV_RANGE7_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE8_FIRST, MSR_GIM_HV_RANGE8_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE9_FIRST, MSR_GIM_HV_RANGE9_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE10_FIRST, MSR_GIM_HV_RANGE10_LAST);
-+        MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE11_FIRST, MSR_GIM_HV_RANGE11_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE7_FIRST, MSR_GIM_HV_RANGE7_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE8_FIRST, MSR_GIM_HV_RANGE8_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE9_FIRST, MSR_GIM_HV_RANGE9_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE10_FIRST, MSR_GIM_HV_RANGE10_LAST);
++            MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE11_FIRST, MSR_GIM_HV_RANGE11_LAST);
 +
-+        /*
-+         * Crash MSRs
-+         *
-+         * We deliberately don't add them here, so we can handle them instead of KVM. This allows us to log the
-+         * crash reason into VM log instead of it ending up in the kernel's log.
-+         */
-+        // MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE12_FIRST, MSR_GIM_HV_RANGE12_LAST);
++            /*
++             * Crash MSRs
++             *
++             * We deliberately don't add them here, so we can handle them instead of KVM. This allows us to log the
++             * crash reason into VM log instead of it ending up in the kernel's log.
++             */
++            // MSR_RANGE_ADD_CLOSED_IVL(MSR_GIM_HV_RANGE12_FIRST, MSR_GIM_HV_RANGE12_LAST);
 +
-+        /*
-+         * These should be available to the guest with feature bit 23 in the base features, which we don't
-+         * expose. But Windows touches them anyway?
-+         */
-+        MSR_RANGE_ADD(0x40000114 /* HV_X64_MSR_STIME_UNHALTED_TIMER_CONFIG */);
-+        MSR_RANGE_ADD(0x40000115 /* HV_X64_MSR_STIME_UNHALTED_TIMER_COUNT */);
++            /*
++             * These should be available to the guest with feature bit 23 in the base features, which we don't
++             * expose. But Windows touches them anyway?
++             */
++            MSR_RANGE_ADD(0x40000114 /* HV_X64_MSR_STIME_UNHALTED_TIMER_CONFIG */);
++            MSR_RANGE_ADD(0x40000115 /* HV_X64_MSR_STIME_UNHALTED_TIMER_COUNT */);
 +
-+        /*
-+         * These are available to the guest with feature bit 15 in the base features (undocumented).
-+         */
-+        MSR_RANGE_ADD(0x40000118 /* HV_X64_MSR_TSC_INVARIANT_CONTROL */);
++            /*
++             * These are available to the guest with feature bit 15 in the base features (undocumented).
++             */
++            MSR_RANGE_ADD(0x40000118 /* HV_X64_MSR_TSC_INVARIANT_CONTROL */);
 +
-+        MSR_RANGE_END(64);
-+    }
++            MSR_RANGE_END(64);
++        }
 +
-     /** @todo Specify other ranges too? Like hyper-V and KVM to make sure we get
-      *        the MSR requests instead of KVM. */
+         /** @todo Specify other ranges too? Like hyper-V and KVM to make sure we get
+          *        the MSR requests instead of KVM. */
  
 @@ -237,6 +690,330 @@ DECLHIDDEN(int) nemR3NativeInitCompletedRing3(PVM pVM)
  }
@@ -4399,7 +4397,7 @@ index 80f89069bec..a98c83ad021 100644
  
 @@ -1027,6 +1921,14 @@ DECLHIDDEN(bool) nemR3NativeSetSingleInstruction(PVM pVM, PVMCPU pVCpu, bool fEn
  
- DECLHIDDEN(void) nemR3NativeNotifyFF(PVM pVM, PVMCPU pVCpu, uint32_t fFlags)
+ void nemR3NativeNotifyFF(PVM pVM, PVMCPU pVCpu, uint32_t fFlags)
  {
 +    if (pVCpu->hThread == RTThreadSelf()) {
 +        // RTThreadPoke doesn't like poking the current thread. We can
@@ -4431,7 +4429,7 @@ index 80f89069bec..a98c83ad021 100644
       */
      if (VMCPU_FF_TEST_AND_CLEAR(pVCpu, VMCPU_FF_UPDATE_APIC))
      {
--        PDMApicUpdatePendingInterrupts(pVCpu);
+-        APICUpdatePendingInterrupts(pVCpu);
 -        if (!VMCPU_FF_IS_ANY_SET(pVCpu, VMCPU_FF_INTERRUPT_APIC | VMCPU_FF_INTERRUPT_PIC
 -                                      | VMCPU_FF_INTERRUPT_NMI  | VMCPU_FF_INTERRUPT_SMI))
 -            return VINF_SUCCESS;
@@ -4468,7 +4466,7 @@ index 80f89069bec..a98c83ad021 100644
 -                 * work correctly.
 -                 */
 -                if (pVCpu->cpum.GstCtx.fExtrn & CPUMCTX_EXTRN_APIC_TPR)
--                    PDMApicSetTpr(pVCpu, (uint8_t)pRun->cr8 << 4);
+-                    APICSetTpr(pVCpu, (uint8_t)pRun->cr8 << 4);
 -
                  uint8_t bInterrupt;
                  int rc = PDMGetInterrupt(pVCpu, &bInterrupt);
@@ -4681,7 +4679,7 @@ index 80f89069bec..a98c83ad021 100644
 +#endif
 +}
  
- VMMR3_INT_DECL(VBOXSTRICTRC) NEMR3RunGC(PVM pVM, PVMCPU pVCpu)
+ VBOXSTRICTRC nemR3NativeRunGC(PVM pVM, PVMCPU pVCpu)
  {
 @@ -1639,6 +2651,28 @@ VMMR3_INT_DECL(VBOXSTRICTRC) NEMR3RunGC(PVM pVM, PVMCPU pVCpu)
          return VINF_SUCCESS;
@@ -4869,8 +4867,8 @@ index be5f46b015f..e16687808f0 100644
 +#include <VBox/msi.h>
 +#endif
  #ifdef RT_OS_WINDOWS
- # include <iprt/nt/hyperv.h>
- # include <iprt/critsect.h>
+ #include <iprt/nt/hyperv.h>
+ #include <iprt/critsect.h>
 @@ -46,6 +55,8 @@
  # else
  #  include "VMXInternal.h"
@@ -4904,7 +4902,7 @@ index be5f46b015f..e16687808f0 100644
 @@ -466,6 +482,21 @@ typedef struct NEMCPU
      /** Status of the FIQ line when last seen. */
      bool                        fFiqLastSeen;
- # elif defined(VBOX_VMM_TARGET_X86)
+ # else
 +#ifdef VBOX_WITH_KVM_NESTING
 +    /** KVM stats file descriptor for binary statistics */
 +    int                         statsFd;
@@ -4922,7 +4920,7 @@ index be5f46b015f..e16687808f0 100644
 +
      /** The MSR_IA32_APICBASE value known to KVM. */
      uint64_t                    uKvmApicBase;
- # endif
+ #endif
 @@ -878,4 +909,3 @@ DECLHIDDEN(int)     nemHCNativeNotifyPhysPageAllocated(PVMCC pVM, RTGCPHYS GCPhy
  RT_C_DECLS_END
  
