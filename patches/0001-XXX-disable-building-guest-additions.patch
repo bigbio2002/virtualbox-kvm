@@ -1,0 +1,25 @@
+From 0487af9cb4600457c164f8f48b83a5166a5e2bc9 Mon Sep 17 00:00:00 2001
+From: Thomas Prescher <thomas.prescher@cyberus-technology.de>
+Date: Thu, 26 Dec 2024 13:51:30 +0100
+Subject: [PATCH] XXX: disable building guest additions
+
+---
+ Config.kmk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Config.kmk b/Config.kmk
+index 6ac1d9bae..649b8124e 100644
+--- a/Config.kmk
++++ b/Config.kmk
+@@ -401,7 +401,7 @@ endif
+ ## @{
+ # This indicates that additions (of some kind or another) is being _built_.
+ # VBOX_WITHOUT_ADDITIONS overrides it.
+-VBOX_WITH_ADDITIONS = 1
++VBOX_WITH_ADDITIONS =
+ # Build the optional ring-0 part of the additions for syntax checking.
+ # On linux we build this as a test case instead.
+ # Skip for darwin.arm64 for now.
+-- 
+2.43.0
+
